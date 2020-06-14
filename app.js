@@ -6,6 +6,7 @@ const markdown = require('marked')
 const csrf = require('csurf')
 const app = express()
 const sanitizeHTML = require('sanitize-html')
+const jwt = require('jsonwebtoken')
 
 app.use(express.urlencoded({extended: false}))
 app.use(express.json())
@@ -68,7 +69,9 @@ app.use(function(err, req, res, next) {
 })
 
 const server = require('http').createServer(app)
-const io = require('socket.io')(server)
+const io = require('socket.io')(server, {
+  pingTimeout: 30000
+})
 
 io.use(function(socket, next) {
   sessionOptions(socket.request, socket.request.res, next)
@@ -82,6 +85,15 @@ io.on('connection', function(socket) {
 
     socket.on('chatMessageFromBrowser', function(data) {
       socket.broadcast.emit('chatMessageFromServer', {message: sanitizeHTML(data.message, {allowedTags: [], allowedAttributes: {}}), username: user.username, avatar: user.avatar})
+    })
+
+    socket.on('chatFromBrowser', function (data) {
+      try {
+        let user = jwt.verify(data.token, process.env.JWTSECRET)
+        socket.broadcast.emit('chatFromServer', { message: sanitizeHTML(data.message, { allowedTags: [], allowedAttributes: {} }), username: user.username, avatar: user.avatar })
+      } catch (e) {
+        console.log('Not a valid token for chat.')
+      }
     })
   }
 })
